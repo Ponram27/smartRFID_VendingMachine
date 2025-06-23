@@ -1,0 +1,149 @@
+#include <SPI.h>
+#include <Wire.h>
+#include <MFRC522.h>
+#include <LiquidCrystal_I2C.h>
+#include <Keypad.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ESP32Servo.h>
+
+// ------------------ Wi-Fi Setup ------------------
+#define WIFI_SSID "AirFiber-Wa9nai"
+#define WIFI_PASSWORD "praneash"
+const char* firebase_host = "https://vendingmachinedb-default-rtdb.firebaseio.com";
+
+// ------------------ RFID Setup ------------------
+#define SS_PIN 5
+#define RST_PIN 27
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+// ------------------ LCD Setup ------------------
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// ------------------ Keypad Setup ------------------
+const byte ROWS = 4, COLS = 4;
+char keys[ROWS][COLS] = {
+  {'1','2','3','A'},
+  {'4','5','6','B'},
+  {'7','8','9','C'},
+  {'*','0','#','D'}
+};
+byte rowPins[ROWS] = {32, 33, 25, 26};
+byte colPins[COLS] = {14, 12, 13, 15};
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+
+// ------------------ Servo Setup ------------------
+#define SERVO_PIN 4
+Servo myServo;
+
+// ------------------ Utility: UID to Hex String ------------------
+String uidToHex(byte *uid, byte len) {
+  String uidHex = "";
+  for (byte i = 0; i < len; i++) {
+    if (uid[i] < 0x10) uidHex += "0";
+    uidHex += String(uid[i], HEX);
+  }
+  uidHex.toUpperCase(); // match Firebase
+  return uidHex;
+}
+
+// ------------------ Firebase GET Balance ------------------
+int getBalance(String uid) {
+  HTTPClient http;
+  String url = String(firebase_host) + "/users/" + uid + "/balance.json";
+  http.begin(url);
+  int httpCode = http.GET();
+  int balance = -1;
+  if (httpCode == 200) {
+    String payload = http.getString();
+    balance = payload.toInt();
+  }
+  http.end();
+  return balance;
+}
+
+// ------------------ Firebase PUT Balance ------------------
+void updateBalance(String uid, int newBalance) {
+  HTTPClient http;
+  String url = String(firebase_host) + "/users/" + uid + "/balance.json";
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+  http.PUT(String(newBalance));
+  http.end();
+}
+
+void setup() {
+  Serial.begin(115200);
+  SPI.begin();
+  rfid.PCD_Init();
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("Connecting WiFi");
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    lcd.print(".");
+  }
+  lcd.clear();
+  lcd.print("WiFi Connected");
+  delay(1000);
+  lcd.clear();
+  lcd.print("Scan your card");
+
+  myServo.setPeriodHertz(50);
+  myServo.attach(SERVO_PIN, 500, 2400);
+  myServo.write(0);  // Closed position
+}
+
+void loop() {
+  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    String uidHex = uidToHex(rfid.uid.uidByte, rfid.uid.size);
+    Serial.print("Scanned UID: ");
+    Serial.println(uidHex);
+
+    int balance = getBalance(uidHex);
+    lcd.clear();
+
+    if (balance >= 0) {
+      lcd.print("Bal: Rs ");
+      lcd.print(balance);
+      lcd.setCursor(0, 1);
+      lcd.print("Choose Product");
+
+      char key = 0;
+      while (!key) key = keypad.getKey();
+
+      int cost = 5;  // Example cost
+      lcd.clear();
+
+      if (balance >= cost) {
+        int newBalance = balance - cost;
+        updateBalance(uidHex, newBalance);
+
+        lcd.print("Product ");
+        lcd.print(key);
+        lcd.setCursor(0, 1);
+        lcd.print("New Rs: ");
+        lcd.print(newBalance);
+
+        // Servo Open/Close
+        myServo.write(90);
+        delay(2000);
+        myServo.write(0);
+      } else {
+        lcd.print("Low Balance!");
+      }
+    } else {
+      lcd.print("Access Denied");
+    }
+
+    delay(3000);
+    lcd.clear();
+    lcd.print("Scan your card");
+
+    rfid.PICC_HaltA();
+    rfid.PCD_StopCrypto1();
+  }
+}
