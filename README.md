@@ -8,7 +8,7 @@ This project implements a smart, RFID-based vending machine using the ESP32 micr
 - Real-time balance fetching and updating using Firebase
 - 4x4 Keypad for product selection
 - Servo motor control for item dispensing
-- I2C LCD display for user instructions
+- I2C LCD for user instructions
 - Wi-Fi based cloud interaction using HTTP (GET & PUT)
 
 ## 🔧 Components
@@ -23,5 +23,5 @@ This project implements a smart, RFID-based vending machine using the ESP32 micr
 https://drive.google.com/file/d/1zKkNPRejolisx8sOVpihkFuv-Ylq-EWa/view?usp=drivesdk
 
 ## 👨‍💻 Team
-Sharvesh230
-Ponram27
+https://github.com/Sharvesh230
+https://github.com/Ponram27
